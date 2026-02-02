@@ -290,6 +290,8 @@ namespace Wm5000T
 
                             AddMessage($"Saving {lines.Length} record(s) to file: {filePath}");
 
+                            DateTime? lastValidDate = null;
+
                             using (StreamWriter writer = new StreamWriter(filePath, true))
                             {
                                 foreach (var line in lines)
@@ -306,8 +308,29 @@ namespace Wm5000T
                                         ulong tagDecimal = Convert.ToUInt64(tag, 16);
 
                                         string datetime = parts[2];
-                                        string date = datetime.Substring(6, 2) + "/" + datetime.Substring(4, 2) + "/" + datetime.Substring(0, 4);
-                                        string time = datetime.Substring(8, 2) + ":" + datetime.Substring(10, 2) + ":" + datetime.Substring(12, 2);
+
+                                        string time = datetime.Substring(8, 2) + ":" +
+                                                      datetime.Substring(10, 2) + ":" +
+                                                      datetime.Substring(12, 2);
+
+                                        string date;
+
+                                        if (TryParseDeviceDate(datetime, out DateTime validDate))
+                                        {
+                                            lastValidDate = validDate;
+                                            date = validDate.ToString("dd/MM/yyyy");
+                                        }
+                                        else
+                                        {
+                                            if (lastValidDate.HasValue)
+                                            {
+                                                date = lastValidDate.Value.ToString("dd/MM/yyyy");
+                                            }
+                                            else
+                                            {
+                                                date = DateTime.Now.ToString("dd/MM/yyyy");
+                                            }
+                                        }
 
                                         string logLine = $"{dataType},{recorderType},{tagDecimal},{date},{time},{deviceId}";
                                         writer.WriteLine(logLine);
@@ -368,6 +391,41 @@ namespace Wm5000T
             countdownRemaining = loopInterval / 1000;
             usbCheckTimer.Start();
         }
+
+        private bool TryParseDeviceDate(string datetime, out DateTime parsedDate)
+        {
+            parsedDate = DateTime.MinValue;
+
+            if (datetime.Length < 14)
+                return false;
+
+            string yearStr = datetime.Substring(0, 4);
+            string monthStr = datetime.Substring(4, 2);
+            string dayStr = datetime.Substring(6, 2);
+
+            if (!int.TryParse(yearStr, out int year) ||
+                !int.TryParse(monthStr, out int month) ||
+                !int.TryParse(dayStr, out int day))
+                return false;
+
+            if (month < 1 || month > 12 || day < 1 || day > 31)
+                return false;
+
+            // reject tahun aneh (contoh: 2080, 2090, 20C0)
+            if (year < 2000 || year > 2035)
+                return false;
+
+            try
+            {
+                parsedDate = new DateTime(year, month, day);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
 
         private void ShowState(long result)
         {
